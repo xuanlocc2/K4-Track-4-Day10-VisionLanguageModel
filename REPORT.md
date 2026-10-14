@@ -1,4 +1,4 @@
-Họ tên: <điền họ tên>
+Họ tên: Nguyễn Văn Xuân Lộc — MSSV: 22127237
 `dataset_version`: <điền, lấy từ data/splits/meta.json>
 
 ## Bảng tổng hợp (số của bạn, lấy từ `report/evidence/*.json`)
