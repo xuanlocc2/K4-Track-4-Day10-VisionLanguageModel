@@ -60,9 +60,11 @@ def load_model(adapter=None, projector=None, trainable=False):
     from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
     q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
                            bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True,
-                           llm_int8_skip_modules=["visual", "lm_head"])
+                           llm_int8_skip_modules=["model.visual", "lm_head"])  # transformers dùng re.match từ đầu tên: "visual" KHÔNG khớp "model.visual..."
     model = Qwen3VLForConditionalGeneration.from_pretrained(
         MODEL_ID, quantization_config=q, dtype=torch.float16, device_map={"": 0})
+    quant = [n for n, p in model.named_parameters() if "visual" in n and p.dtype == torch.uint8]
+    assert not quant, f"ViT/projector bị lượng tử hoá 4-bit: {quant[:3]}"
     processor = AutoProcessor.from_pretrained(MODEL_ID)
     processor.tokenizer.padding_side = "left"
     if adapter:
