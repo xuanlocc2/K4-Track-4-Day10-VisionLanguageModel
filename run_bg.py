@@ -1,15 +1,25 @@
 """Chạy các giai đoạn thí nghiệm như tiến trình nền trên VM Colab: python run_bg.py <BACKUP> e0,e1,e2,e3
 Mất kết nối VS Code/Colab UI không làm tiến trình dừng; chạy lại thì tự resume (xem train() và predict())."""
-import glob
 import json
 import os
+import subprocess
 import sys
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+backup, stages = sys.argv[1], sys.argv[2].split(",")
+if len(stages) > 1:  # mỗi giai đoạn một tiến trình riêng → GPU luôn sạch giữa các thí nghiệm
+    for st in stages:
+        subprocess.run([sys.executable, "-u", __file__, backup, st], check=True,
+                       env={**os.environ, "RUN_BG_CHILD": "1"})
+    print("ALL_DONE", flush=True)
+    sys.exit()
 
 import yaml
 
 from lab import *
 
-backup, stages = sys.argv[1], sys.argv[2].split(",")
+print(subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv"],
+                     capture_output=True, text=True).stdout, flush=True)
 CFG = {n: yaml.safe_load(open(f"configs/{n}.yaml", encoding="utf-8")) for n in ("e0", "e1", "e2", "e3", "e4", "e5")}
 test = load_split("test")
 
@@ -46,4 +56,5 @@ for st in stages:
             predict(model, processor, test, pred, max_new_tokens=512); del model; cleanup()
         score(pred, "E5", "report/evidence/e5.json", {**run_meta(run5), "init": b})
     print(f"===== {st} xong =====", flush=True)
-print("ALL_DONE", flush=True)
+if not os.environ.get("RUN_BG_CHILD"):
+    print("ALL_DONE", flush=True)

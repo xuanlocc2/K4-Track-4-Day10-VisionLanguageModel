@@ -453,6 +453,10 @@ def bg(stages, backup, poll=20):
     log = Path(backup) / f"bg_{tag}.log"
     alive = subprocess.run(["pgrep", "-f", f"run_bg.py {backup} {stages}"], capture_output=True).returncode == 0
     if not alive and not (log.exists() and "ALL_DONE" in log.read_text()):
+        used = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                              capture_output=True, text=True).stdout.strip()
+        if used.isdigit() and int(used) > 1500:  # kernel/tiến trình khác đang giữ GPU → sẽ OOM
+            raise RuntimeError(f"GPU đang bị chiếm {used} MiB bởi tiến trình khác. Runtime → Restart session rồi chạy lại.")
         subprocess.Popen(f"nohup python -u run_bg.py {backup} {stages} > {log} 2>&1 &", shell=True)
         print("đã chạy nền:", stages)
         time.sleep(5)
