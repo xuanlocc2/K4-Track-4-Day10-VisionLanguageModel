@@ -471,5 +471,5 @@ def bg(stages, backup, poll=20):
         if "ALL_DONE" in text[-200:]:
             return
         if "Traceback" in text and subprocess.run(["pgrep", "-f", "run_bg.py"], capture_output=True).returncode != 0:
-            raise RuntimeError("tiến trình nền lỗi, xem log phía trên")
+            raise RuntimeError("tiến trình nền lỗi: " + " | ".join(text.strip().splitlines()[-3:])[-900:])
         time.sleep(poll)
