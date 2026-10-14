@@ -456,7 +456,9 @@ def bg(stages, backup, poll=20):
         used = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
                               capture_output=True, text=True).stdout.strip()
         if used.isdigit() and int(used) > 1500:  # kernel/tiến trình khác đang giữ GPU → sẽ OOM
-            raise RuntimeError(f"GPU đang bị chiếm {used} MiB bởi tiến trình khác. Runtime → Restart session rồi chạy lại.")
+            ps = subprocess.run("ps -eo pid,etime,args | grep -E 'python|ipykernel' | grep -v grep | cut -c1-150",
+                                shell=True, capture_output=True, text=True).stdout
+            raise RuntimeError(f"GPU đang bị chiếm {used} MiB bởi tiến trình khác. Tiến trình python đang chạy: " + ps)
         subprocess.Popen(f"nohup python -u run_bg.py {backup} {stages} > {log} 2>&1 &", shell=True)
         print("đã chạy nền:", stages)
         time.sleep(5)
