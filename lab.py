@@ -443,3 +443,29 @@ def grpo(init_dir, run_dir, cfg, images_per_step=2, log_every=5):
     del model, opt, params
     cleanup()
     return run
+
+
+# ---------------------------------------------------------------- chạy nền (sống sót khi mất kết nối)
+def bg(stages, backup, poll=20):
+    """Bắt đầu hoặc nối lại tiến trình nền rồi chờ tới khi xong, in log mới. Mất kết nối → Run All lại là nối tiếp."""
+    import subprocess
+    tag = stages.replace(",", "_")
+    log = Path(backup) / f"bg_{tag}.log"
+    alive = subprocess.run(["pgrep", "-f", f"run_bg.py {backup} {stages}"], capture_output=True).returncode == 0
+    if not alive and not (log.exists() and "ALL_DONE" in log.read_text()):
+        subprocess.Popen(f"nohup python -u run_bg.py {backup} {stages} > {log} 2>&1 &", shell=True)
+        print("đã chạy nền:", stages)
+        time.sleep(5)
+    elif alive:
+        print("tiến trình nền đang chạy → nối lại")
+    pos = 0
+    while True:
+        text = log.read_text() if log.exists() else ""
+        if len(text) > pos:
+            print(text[pos:], end="")
+            pos = len(text)
+        if "ALL_DONE" in text[-200:]:
+            return
+        if "Traceback" in text and subprocess.run(["pgrep", "-f", "run_bg.py"], capture_output=True).returncode != 0:
+            raise RuntimeError("tiến trình nền lỗi, xem log phía trên")
+        time.sleep(poll)
