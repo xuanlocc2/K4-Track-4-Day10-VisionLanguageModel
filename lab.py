@@ -211,8 +211,20 @@ def train(setup, run_dir, train_fraction=1.0, log_every=10):
     scaler = torch.amp.GradScaler("cuda")
     torch.cuda.reset_peak_memory_stats()
     model.train()
-    it, losses, t0 = batches(), [], time.time()
-    for step in range(1, steps + 1):
+    ckpt_path, start, losses, t_prev = run_dir / "ckpt.pt", 1, [], 0.0
+    if ckpt_path.exists():  # bị ngắt giữa chừng → train tiếp từ checkpoint gần nhất
+        ck = torch.load(ckpt_path, map_location="cpu")
+        with torch.no_grad():
+            for n, p in model.named_parameters():
+                if n in ck["params"]:
+                    p.copy_(ck["params"][n])
+        opt.load_state_dict(ck["opt"]); sched.load_state_dict(ck["sched"]); scaler.load_state_dict(ck["scaler"])
+        start, losses, t_prev = ck["step"] + 1, ck["losses"], ck["minutes"]
+        random.seed(setup["seed"] + ck["step"])  # thứ tự batch sau resume khác nhưng vẫn xáo trộn
+        print(f"resume từ checkpoint: bước {ck['step']}/{steps}")
+        del ck
+    it, t0 = batches(), time.time() - t_prev * 60
+    for step in range(start, steps + 1):
         tot = 0.0
         for _ in range(acc):
             batch = {k: v.to(model.device) for k, v in next(it).items()}
@@ -233,8 +245,12 @@ def train(setup, run_dir, train_fraction=1.0, log_every=10):
             print(f"step {step}/{steps} loss={sum(losses[-log_every:]) / log_every:.4f} "
                   f"lr={sched.get_last_lr()[0]:.2e} {(time.time() - t0) / 60:.1f}m "
                   f"vram={torch.cuda.max_memory_allocated() / 2**30:.1f}GB")
-        if step % 100 == 0 or step == steps:
-            save_trained(model, run_dir, setup["train_projector"])
+        if step % 50 == 0 or step == steps:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            torch.save({"params": {n: p.detach().cpu() for n, p in model.named_parameters() if p.requires_grad},
+                        "opt": opt.state_dict(), "sched": sched.state_dict(), "scaler": scaler.state_dict(),
+                        "step": step, "losses": losses, "minutes": (time.time() - t0) / 60}, ckpt_path)
+    save_trained(model, run_dir, setup["train_projector"])
     run = {"name": setup["name"], "trainable_params": n_train, "lora_modules": n_mod,
            "peak_vram_gb": round(torch.cuda.max_memory_allocated() / 2**30, 2),
            "train_minutes": round((time.time() - t0) / 60, 1),
